@@ -1,0 +1,16 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# 本地数据：登录凭证和消费记录，千万别提交
+data/
+
+# 编辑器生成的文件
+.claude/

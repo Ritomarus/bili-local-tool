@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="local-token" content="__TOKEN__">
+<title>BiliLocal</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='3' y='7' width='26' height='19' rx='5' fill='%23fb7299'/%3E%3Cpath d='M10 3l4 4M22 3l-4 4' stroke='%23fb7299' stroke-width='2.5' stroke-linecap='round'/%3E%3Ccircle cx='11.5' cy='16.5' r='2' fill='white'/%3E%3Ccircle cx='20.5' cy='16.5' r='2' fill='white'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="logo" aria-hidden="true"></span>BiliLocal <span class="tag">本机运行</span><span class="tag demo" id="demoTag" hidden>演示数据</span></div>
+  <div class="account" id="account" hidden>
+    <div class="sync">
+      <span class="sync-text" id="syncText"></span>
+      <button class="btn primary" id="syncBtn">同步数据</button>
+    </div>
+    <img class="avatar" id="avatar" alt="" referrerpolicy="no-referrer">
+    <span class="uname" id="uname"></span>
+  </div>
+</header>
+
+<main id="login" class="login" hidden>
+  <section class="login-card">
+    <h1>扫码登录 B站</h1>
+    <p class="muted">二维码由本机直接向 <code>passport.bilibili.com</code> 申请，登录凭证只保存在你电脑的本地数据目录，不经过任何第三方服务器。</p>
+    <div class="qr" id="qr"><div class="spinner"></div></div>
+    <p class="qr-status" id="qrStatus">正在生成二维码…</p>
+    <button class="btn" id="qrRefresh" hidden>重新生成二维码</button>
+  </section>
+</main>
+
+<main id="app" hidden>
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-tab="overview" class="active">概览</button>
+    <button role="tab" data-tab="records">消费明细</button>
+    <button role="tab" data-tab="blindbox">盲盒盈亏</button>
+    <button role="tab" data-tab="synthesis">合成活动</button>
+    <button role="tab" data-tab="medals">勋章与钱包</button>
+    <button role="tab" data-tab="security">安全与设置</button>
+  </nav>
+
+  <div class="rangebar" id="rangebar">
+    <div class="seg" id="rangeSeg">
+      <button data-range="all" class="active">全部</button>
+      <button data-range="this_month">本月</button>
+      <button data-range="last_month">上月</button>
+      <button data-range="30d">近30天</button>
+      <button data-range="7d">近7天</button>
+      <button data-range="this_year">今年</button>
+      <button data-range="custom">自定义</button>
+    </div>
+    <div class="custom-range" id="customRange" hidden>
+      <input type="date" id="rangeStart" aria-label="开始日期"> <span class="muted">至</span>
+      <input type="date" id="rangeEnd" aria-label="结束日期">
+      <button class="btn" id="rangeApply">应用</button>
+    </div>
+  </div>
+
+  <div id="view"></div>
+</main>
+
+<div class="tooltip" id="tooltip" role="tooltip" hidden></div>
+<div class="toast" id="toast" hidden></div>
+<script src="app.js"></script>
+</body>
+</html>

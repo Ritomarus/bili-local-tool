@@ -1,0 +1,18 @@
+[project]
+name = "bili-local-tool"
+version = "0.2.0"
+description = "只在本机运行的 B站直播消费数据分析工具（扫码登录直连 B站官方接口）"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12"
+dependencies = [
+    "qrcode>=8.2",
+    "requests>=2.34.2",
+]
+
+[project.scripts]
+bili-local-tool = "bili_local_tool:main"
+
+[build-system]
+requires = ["uv_build>=0.13.0,<0.14.0"]
+build-backend = "uv_build"

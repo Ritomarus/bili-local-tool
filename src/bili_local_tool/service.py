@@ -17,6 +17,7 @@ from .storage import Storage
 # 增量同步时，在已有最新记录之前再往回翻一周，补上 B站延迟入账或状态变化（比如退回）的记录
 RECHECK_WINDOW = 7 * 86400
 BLIND_INFO_TTL = 3 * 86400
+CARD_TTL = 7 * 86400
 PAGE_DELAY = 0.35
 
 
@@ -165,6 +166,9 @@ class App:
             draws = sync_blind_draws(c, boxes, self.storage.load_draws(mid), lambda t: self.sync.set(text=t))
             self.storage.save_draws(mid, draws)
 
+            self.sync.set(text="正在更新主播头像…")
+            self.anchor_cards([r.get("ruid") for r in records], refresh=True)
+
             self.storage.save_meta(mid, {**self.storage.load_meta(mid), "last_sync": int(time.time())})
             self.sync.set(text=f"同步完成，新增 {added} 条消费记录")
         except NotLoggedIn:
@@ -192,6 +196,44 @@ class App:
         return analysis.blindbox_report(
             self.storage.load_blind_boxes(), self.storage.load_draws(mid), rng, self.storage.load_records(mid)
         )
+
+    def bubbles(self, rng: analysis.Range, metric: str) -> list[dict[str, Any]]:
+        items = analysis.anchor_bubbles(self.records(), rng, metric)
+        cards = self.anchor_cards([a["ruid"] for a in items])
+        for a in items:
+            card = cards.get(str(a["ruid"])) or {}
+            a["face"] = card.get("face", "")
+            a["name"] = a["name"] or card.get("name", "")
+            a["room_id"] = a["room_id"] or card.get("room_id", 0)
+        return items
+
+    def anchor_cards(self, ruids: list[Any], refresh: bool = False) -> dict[str, Any]:
+        """主播头像缓存：缺的（或 refresh 时过期的）按 50 个一批向 B站补。查不到的也记下，避免反复请求。"""
+        cache = self.storage.load_anchor_cards()
+        now = int(time.time())
+        want = [
+            int(u) for u in dict.fromkeys(ruids)
+            if u and (str(u) not in cache or (refresh and now - cache[str(u)].get("updated_at", 0) > CARD_TTL))
+        ]
+        if want:
+            c = BiliClient()  # 公开接口，不带登录 Cookie
+            for i in range(0, len(want), 50):
+                batch = want[i : i + 50]
+                try:
+                    got = c.anchor_cards(batch)
+                except BiliError:
+                    break
+                for uid in batch:
+                    info = got.get(str(uid)) or {}
+                    cache[str(uid)] = {
+                        "name": info.get("uname", ""),
+                        "face": analysis.https(info.get("face")),
+                        "room_id": info.get("room_id", 0),
+                        "updated_at": now,
+                    }
+                time.sleep(PAGE_DELAY)
+            self.storage.save_anchor_cards(cache)
+        return cache
 
     def synthesis(self) -> dict[str, Any]:
         cfg = self.storage.load_config()

@@ -129,6 +129,9 @@ class DemoApp(App):
         self.sync.set(running=False, error="", text="演示模式：数据是随机生成的，没有真的同步", finished_at=int(time.time()))
         return {"started": False}
 
+    def anchor_cards(self, ruids: list[Any], refresh: bool = False) -> dict[str, Any]:
+        return {}  # 演示模式不联网，气泡里显示名字首字
+
     def medals(self) -> list[dict[str, Any]]:
         rnd = random.Random(3)
         out = []

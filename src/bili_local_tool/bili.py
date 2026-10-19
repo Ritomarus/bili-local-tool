@@ -108,6 +108,7 @@ class BiliClient:
         *,
         params: dict[str, Any] | None = None,
         data: dict[str, Any] | None = None,
+        json: Any = None,
         headers: dict[str, str] | None = None,
         retries: int = 3,
     ) -> dict[str, Any]:
@@ -116,7 +117,7 @@ class BiliClient:
         for attempt in range(retries + 1):
             try:
                 resp = self.http.request(
-                    method, url, params=params, data=data, headers=headers, timeout=15, allow_redirects=False
+                    method, url, params=params, data=data, json=json, headers=headers, timeout=15, allow_redirects=False
                 )
             except requests.RequestException as e:
                 _log(method, url, "error")
@@ -244,6 +245,13 @@ class BiliClient:
         if payload.get("code") != 0 or not data.get("gifts"):
             return None
         return data
+
+    def anchor_cards(self, uids: list[int]) -> dict[str, dict[str, Any]]:
+        """批量查主播的昵称、头像、直播间号。没有直播间的用户不会出现在结果里。"""
+        data = self._data(
+            "POST", "https://api.live.bilibili.com/room/v1/Room/get_status_info_by_uids", json={"uids": uids}
+        )
+        return data if isinstance(data, dict) else {}
 
     def blind_draw_page(self, gift_id: int, cursor: dict[str, Any] | None = None) -> dict[str, Any]:
         params: dict[str, Any] = {"gift_id": gift_id, "page_size": 50}

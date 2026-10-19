@@ -172,6 +172,9 @@ def make_handler(app: App, port: int, token: str) -> type[BaseHTTPRequestHandler
     def overview(h: Handler) -> Any:
         return analysis.overview(app.records(), h.rng())
 
+    def bubbles(h: Handler) -> Any:
+        return app.bubbles(h.rng(), "count" if h.query.get("metric") == "count" else "spent")
+
     def records(h: Handler) -> Any:
         q = h.query
         try:
@@ -261,6 +264,7 @@ def make_handler(app: App, port: int, token: str) -> type[BaseHTTPRequestHandler
         ("POST", "/api/sync"): sync_start,
         ("GET", "/api/overview"): overview,
         ("GET", "/api/records"): records,
+        ("GET", "/api/bubbles"): bubbles,
         ("GET", "/api/export"): export,
         ("GET", "/api/blindbox"): blindbox,
         ("GET", "/api/synthesis"): synthesis,

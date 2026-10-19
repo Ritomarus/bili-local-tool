@@ -239,3 +239,11 @@ ul.plain li { margin: 3px 0; }
   .card { padding: 14px; }
   .hbar-row { grid-template-columns: minmax(60px, 96px) minmax(0, 1fr) auto; }
 }
+
+/* ---------- 主播气泡图 ---------- */
+.bubbles { min-height: 240px; }
+.bubbles svg { display: block; width: 100%; height: auto; }
+.bub { cursor: pointer; }
+.bub text { fill: var(--text-2); font-weight: 600; pointer-events: none; }
+.bub .ring { fill: none; stroke: var(--surface); stroke-width: 2; }
+.bub:hover .ring { stroke: var(--accent); stroke-width: 3; }

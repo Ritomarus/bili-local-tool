@@ -67,6 +67,7 @@ const state = {
   wallet: null,
   medalSort: { key: "level", dir: -1 },
   medalQ: "",
+  bubble: store.get("bubble", "spent"),
 };
 let renderSeq = 0;
 const charts = []; // 当前页面上的图表，窗口大小变化时重画
@@ -386,6 +387,147 @@ document.addEventListener("mouseout", (e) => {
   if (!e.relatedTarget || !e.relatedTarget.closest?.("[data-tip]")) tip.hidden = true;
 });
 
+/* ========== 主播气泡图 ========== */
+
+// B站图床支持 @宽w_高h 缩略图参数，几百个头像只取小图
+function thumb(u, px) {
+  if (!isBiliImg(u) || !/\/bfs\//.test(u) || u.includes("@")) return isBiliImg(u) ? u : "";
+  return `${u}@${px}w_${px}h_1c.webp`;
+}
+
+/** 把圆塞进一个矩形：大的在中间，小的往四周和角落铺满。
+ *  力导向：大圆被拉向中心、小圆只受很弱的拉力；碰撞互相推开；边界挡住。最后把仍然重叠的小圆缩一点，保证不重叠。 */
+function packBubbles(items, W) {
+  const n = items.length;
+  const H = Math.round(Math.max(200, Math.min(W * 0.6, 110 + Math.sqrt(n) * 30)));
+  const roots = items.map((d) => Math.sqrt(Math.max(0, d.value)));
+  const top = Math.max(...roots, 1e-9);
+  // 面积 ∝ 数值；太小的圆设个下限，不然看不见
+  const rel = roots.map((v) => Math.max(v / top, n > 60 ? 0.1 : 0.16));
+  const area = rel.reduce((s, x) => s + Math.PI * x * x, 0);
+  const k = Math.min(Math.sqrt((0.8 * W * H) / area), H * 0.32);
+  const gap = 2;
+  const cx = W / 2, cy = H / 2;
+  const nodes = items.map((d, i) => {
+    // 按大小从中心往外，用黄金角螺旋铺满整个矩形（稍微超出，靠边界挡回来，角落也能有圆）
+    const a = i * 2.39996;
+    const t = Math.sqrt((i + 0.5) / n) * 1.15;
+    const r = rel[i] * k;
+    return { d, r, w: 0.05 + 0.95 * rel[i], x: cx + Math.cos(a) * t * (W / 2 - r), y: cy + Math.sin(a) * t * (H / 2 - r) };
+  });
+  const iters = n > 300 ? 240 : 320;
+  for (let it = 0; it < iters; it++) {
+    const pull = it < iters * 0.45 ? 0.035 * (1 - it / (iters * 0.45)) : 0; // 后半段只做碰撞，挤满角落
+    for (const p of nodes) {
+      p.x += (cx - p.x) * pull * p.w * (H / W);
+      p.y += (cy - p.y) * pull * p.w;
+    }
+    for (let i = 0; i < n; i++) {
+      const a = nodes[i];
+      for (let j = i + 1; j < n; j++) {
+        const b = nodes[j];
+        const dx = b.x - a.x, dy = b.y - a.y, min = a.r + b.r + gap;
+        if (Math.abs(dx) >= min || Math.abs(dy) >= min) continue;
+        const d2 = dx * dx + dy * dy;
+        if (d2 >= min * min) continue;
+        const d = Math.sqrt(d2) || 0.01;
+        const push = ((min - d) / d) * 0.5;
+        const wa = (b.r * b.r) / (a.r * a.r + b.r * b.r); // 大圆少动，小圆多让
+        a.x -= dx * push * wa; a.y -= dy * push * wa;
+        b.x += dx * push * (1 - wa); b.y += dy * push * (1 - wa);
+      }
+    }
+    for (const p of nodes) {
+      p.x = Math.min(W - p.r - 1, Math.max(p.r + 1, p.x));
+      p.y = Math.min(H - p.r - 1, Math.max(p.r + 1, p.y));
+    }
+  }
+  // 收尾：还重叠的，把小的那个缩到刚好不碰
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      const a = nodes[i], b = nodes[j];
+      const d = Math.hypot(b.x - a.x, b.y - a.y);
+      if (d >= a.r + b.r + 0.5) continue;
+      const small = a.r < b.r ? a : b, big = small === a ? b : a;
+      small.r = Math.max(2, d - big.r - 0.5);
+    }
+  }
+  return { nodes, H };
+}
+
+function drawBubbles(el, spec) {
+  const W = Math.max(280, el.clientWidth);
+  if (!spec.items.length) {
+    el.innerHTML = '<p class="muted">没有数据</p>';
+    return;
+  }
+  const { nodes, H } = packBubbles(spec.items, W);
+  const uid = el.dataset.chart || "b";
+  let defs = "", body = "";
+  nodes.forEach((p, i) => {
+    const { d } = p;
+    const x = p.x.toFixed(1), y = p.y.toFixed(1), r = p.r.toFixed(1);
+    const src = thumb(d.face, p.r > 40 ? 240 : 96);
+    const fill = ["var(--heat-1)", "var(--heat-2)", "var(--surface-2)"][i % 3];
+    body += `<g class="bub" data-tip="${esc(d.tip)}"${d.room_id ? ` data-room="${esc(d.room_id)}"` : ""}>
+      <circle cx="${x}" cy="${y}" r="${r}" fill="${fill}"/>`;
+    if (src) {
+      defs += `<clipPath id="${uid}-${i}"><circle cx="${x}" cy="${y}" r="${r}"/></clipPath>`;
+      body += `<image href="${esc(src)}" x="${(p.x - p.r).toFixed(1)}" y="${(p.y - p.r).toFixed(1)}" width="${(2 * p.r).toFixed(1)}" height="${(2 * p.r).toFixed(1)}" clip-path="url(#${uid}-${i})" preserveAspectRatio="xMidYMid slice"/>`;
+    } else if (p.r >= 7) {
+      body += `<text x="${x}" y="${y}" dy=".35em" text-anchor="middle" font-size="${Math.max(9, p.r * 0.8).toFixed(0)}">${esc([...(d.name || "?")][0])}</text>`;
+    }
+    body += `<circle class="ring" cx="${x}" cy="${y}" r="${r}"/></g>`;
+  });
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${esc(spec.label)}"><defs>${defs}</defs>${body}</svg>`;
+}
+
+const BUBBLE_MODES = {
+  spent: { label: "按礼物价值", sub: "圆越大，送出的礼物价值越高（电池 + 包裹礼物）" },
+  count: { label: "按送礼次数", sub: "圆越大，送礼次数越多" },
+  medal: { label: "粉丝勋章", sub: "圆越大，粉丝勋章等级越高" },
+};
+
+async function loadBubbles(alive) {
+  const box = $("#bubbles");
+  const mode = BUBBLE_MODES[state.bubble] ? state.bubble : "spent";
+  $$("#bubbleSeg button").forEach((b) => b.classList.toggle("active", b.dataset.m === mode));
+  box.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  let items;
+  try {
+    if (mode === "medal") {
+      if (!state.medals) state.medals = await api("/api/medals");
+      items = state.medals.map((m) => ({
+        name: m.anchor, face: m.anchor_face, room_id: m.room_id, value: m.level,
+        tip: `${m.anchor}\n勋章「${m.name}」Lv.${m.level}${m.lighted ? "" : "（未点亮）"}`,
+      })).sort((a, b) => b.value - a.value);
+    } else {
+      const list = await api(`/api/bubbles?${rangeQS()}&metric=${mode}`);
+      items = list.map((a) => ({
+        name: a.name, face: a.face, room_id: a.room_id, value: a.value,
+        tip: `${a.name || "UID " + a.ruid}\n礼物价值 ${fmt(a.spent + a.bag)} 电池（${yuan(a.spent + a.bag)}）${a.bag ? `\n其中包裹礼物 ${fmt(a.bag)}` : ""}\n送礼 ${fmt(a.count)} 次 · 最近 ${dateStr(a.last_ts)}`,
+      }));
+    }
+  } catch (e) {
+    if (alive()) box.innerHTML = `<p class="muted">加载失败：${esc(e.message)}</p>`;
+    return;
+  }
+  if (!alive()) return;
+  $("#bubbleSub").textContent = `${fmt(items.length)} 位主播 · ${BUBBLE_MODES[mode].sub} · 点头像打开直播间`;
+  const id = "c" + ++chartId;
+  const spec = { items, label: "主播气泡图" };
+  const old = charts.findIndex((c) => c.draw === drawBubbles);
+  if (old >= 0) charts.splice(old, 1);
+  charts.push({ id, draw: drawBubbles, spec });
+  box.dataset.chart = id;
+  drawBubbles(box, spec);
+}
+
+document.addEventListener("click", (e) => {
+  const g = e.target.closest?.("#bubbles [data-room]");
+  if (g) window.open(`https://live.bilibili.com/${encodeURIComponent(g.dataset.room)}`, "_blank", "noopener,noreferrer");
+});
+
 /* ========== 概览 ========== */
 
 async function viewOverview(view, alive) {
@@ -414,6 +556,12 @@ async function viewOverview(view, alive) {
     <div class="card tile"><div class="label">送过的主播</div><div class="value num">${fmt(t.anchors)}</div><div class="hint">消费 ${fmt(t.days_active)} 天</div></div>
     <div class="card tile"><div class="label">包裹礼物价值</div><div class="value num">${fmt(t.bag_value)}<small>电池</small></div><div class="hint">送出 ${fmt(t.bag_count)} 次，不花电池</div></div>
     <div class="card tile"><div class="label">花得最多的一天</div><div class="value num">${fmt(big.spent)}<small>电池</small></div><div class="hint">${esc(big.date || "-")}</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><div><h2>送过礼的主播</h2><p class="sub" id="bubbleSub">&nbsp;</p></div>
+      <div class="seg" id="bubbleSeg">${Object.entries(BUBBLE_MODES).map(([k, v]) => `<button data-m="${k}">${v.label}</button>`).join("")}</div></div>
+    <div class="bubbles" id="bubbles"></div>
   </div>
 
   <div class="card">
@@ -461,6 +609,12 @@ async function viewOverview(view, alive) {
     </div>
   </div>`;
   mountCharts(view);
+  $$("#bubbleSeg button").forEach((b) => (b.onclick = () => {
+    state.bubble = b.dataset.m;
+    store.set("bubble", state.bubble);
+    loadBubbles(alive);
+  }));
+  loadBubbles(alive);
 }
 
 /* ========== 消费明细 ========== */

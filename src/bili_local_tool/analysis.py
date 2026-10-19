@@ -209,6 +209,28 @@ def overview(records: list[dict[str, Any]], rng: Range) -> dict[str, Any]:
     }
 
 
+def anchor_bubbles(records: list[dict[str, Any]], rng: Range, metric: str = "spent") -> list[dict[str, Any]]:
+    """每位送过礼的主播一项，给气泡图用。metric=spent 按礼物价值（电池 + 包裹），count 按送礼次数。"""
+    anchors: dict[Any, dict[str, Any]] = {}
+    for r in _valid(records, rng):
+        if r.get("ruid") is None:
+            continue
+        a = anchors.setdefault(
+            r["ruid"], {"ruid": r["ruid"], "name": "", "room_id": 0, "spent": 0.0, "bag": 0.0, "count": 0, "last_ts": 0}
+        )
+        a["name"] = a["name"] or r.get("r_uname") or ""
+        a["room_id"] = a["room_id"] or int(r.get("room_id") or 0)
+        a["bag" if is_bag(r) else "spent"] += coin(r)
+        a["count"] += 1
+        a["last_ts"] = max(a["last_ts"], int(r.get("timestamp") or 0))
+    out = []
+    for a in anchors.values():
+        value = a["count"] if metric == "count" else a["spent"] + a["bag"]
+        out.append({**a, "spent": num(a["spent"]), "bag": num(a["bag"]), "value": num(value)})
+    out.sort(key=lambda a: (a["value"], a["count"]), reverse=True)
+    return out
+
+
 # ---------- 消费明细 ----------
 
 

@@ -64,6 +64,32 @@ class AnalysisTest(unittest.TestCase):
         self.assertEqual(o["totals"]["biggest_day"], {"date": "2026-01-05", "spent": 1100})
         json.dumps(o)  # 必须能直接序列化
 
+    def test_anchor_bubbles(self):
+        records = [
+            {**rec(1, ts(2026, 1, 1), "100", ruid=7, uname="A"), "room_id": 70},
+            rec(2, ts(2026, 1, 2), "30", ruid=7, uname="A", bag=True),
+            rec(3, ts(2026, 1, 3), "500", ruid=8, uname="B"),
+            rec(4, ts(2026, 1, 4), "999", ruid=9, uname="C", refunded=True),
+        ]
+        by_value = analysis.anchor_bubbles(records, analysis.Range())
+        self.assertEqual([(a["ruid"], a["value"]) for a in by_value], [(8, 500), (7, 130)])
+        self.assertEqual(by_value[1]["room_id"], 70)
+        by_count = analysis.anchor_bubbles(records, analysis.Range(), "count")
+        self.assertEqual([(a["ruid"], a["value"]) for a in by_count], [(7, 2), (8, 1)])
+
+    def test_anchor_cards_cache(self):
+        with tempfile.TemporaryDirectory() as d:
+            app = service.App(Storage(Path(d)))
+            fake = {"7": {"uname": "A", "face": "http://i0.hdslb.com/bfs/face/a.jpg", "room_id": 70}}
+            with mock.patch.object(bili.BiliClient, "anchor_cards", return_value=fake) as call, \
+                    mock.patch.object(service.time, "sleep"):
+                cards = app.anchor_cards([7, 8, 7])
+                self.assertEqual(call.call_args[0][0], [7, 8])
+                self.assertEqual(cards["7"]["face"], "https://i0.hdslb.com/bfs/face/a.jpg")
+                self.assertEqual(cards["8"]["face"], "")  # 查不到也缓存，下次不再请求
+                app.anchor_cards([7, 8])
+                self.assertEqual(call.call_count, 1)
+
     def test_records_page_filters(self):
         records = [rec(i, ts(2026, 1, 1) + i, "10", ruid=i % 2, uname=f"U{i % 2}") for i in range(120)]
         p = analysis.records_page(records, analysis.Range(), ruid="1", page=2)
@@ -243,7 +269,7 @@ class ServerTest(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertTrue(st["logged_in"] and st["demo"])
         for path in ("/api/overview?range=all", "/api/overview?range=30d", "/api/records?page=2&kind=paid",
-                     "/api/blindbox", "/api/synthesis", "/api/medals", "/api/wallet", "/api/settings", "/api/netlog"):
+                     "/api/blindbox", "/api/bubbles?metric=count", "/api/synthesis", "/api/medals", "/api/wallet", "/api/settings", "/api/netlog"):
             status, data = self.api(path)
             self.assertEqual(status, 200, path)
         status, o = self.api("/api/overview")

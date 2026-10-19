@@ -128,6 +128,13 @@ class Storage:
     def save_blind_boxes(self, boxes: dict[str, Any]) -> None:
         self.write(boxes, "blind_boxes.json")
 
+    def load_anchor_cards(self) -> dict[str, Any]:
+        """{主播UID: {name, face, room_id, updated_at}}，头像缓存，各账号共用。"""
+        return self.read("anchor_cards.json", default={})
+
+    def save_anchor_cards(self, cards: dict[str, Any]) -> None:
+        self.write(cards, "anchor_cards.json")
+
     def load_config(self) -> dict[str, Any]:
         cfg = self.read("config.json", default={})
         return {**DEFAULT_CONFIG, **(cfg if isinstance(cfg, dict) else {})}
